@@ -10,11 +10,13 @@
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QFont
 import sys
 import psycopg2
+from psycopg2 import sql
 import window1
 
-#подключение к БД
+# подключение к БД
 conn = psycopg2.connect(dbname="project_db", user="postgres",
                         password="17042008", host="localhost", port="5433")
 cursor = conn.cursor()
@@ -159,6 +161,27 @@ used_math = []
 used_it = []
 used_eng = []
 
+
+def removeAll(self):
+    self.lineEdit.deleteLater()
+    self.lineEdit = None
+    self.lineEdit_2.deleteLater()
+    self.lineEdit_2 = None
+    self.label.deleteLater()
+    self.label = None
+    self.label_2.deleteLater()
+    self.label_2 = None
+    self.pushButton.deleteLater()
+    self.pushButton = None
+    self.pushButton_2.deleteLater()
+    self.pushButton_2 = None
+
+
+def createNew(self):
+    # сделать основное окно
+    pass
+
+
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -169,27 +192,29 @@ class Ui_MainWindow(object):
         self.centralwidget.setAutoFillBackground(False)
         self.centralwidget.setObjectName("centralwidget")
 
+        font = QFont(
+            "Arial",
+            12
+        )
+
         self.lineEdit = QtWidgets.QLineEdit(self.centralwidget)
-        self.lineEdit.setGeometry(QtCore.QRect(300, 200, 191, 21))
+        self.lineEdit.setGeometry(QtCore.QRect(300, 200, 191, 25))
         self.lineEdit.setObjectName("lineEdit")
+        self.lineEdit.setFont(font)
 
         self.lineEdit_2 = QtWidgets.QLineEdit(self.centralwidget)
-        self.lineEdit_2.setGeometry(QtCore.QRect(300, 250, 191, 21))
+        self.lineEdit_2.setGeometry(QtCore.QRect(300, 248, 191, 25))
         self.lineEdit_2.setObjectName("lineEdit_2")
+        self.lineEdit_2.setFont(font)
 
         self.label = QtWidgets.QLabel(self.centralwidget)
         self.label.setGeometry(QtCore.QRect(248, 200, 51, 21))
-        font = QtGui.QFont()
-        font.setFamily("Arial")
         font.setPointSize(12)
         self.label.setFont(font)
         self.label.setObjectName("label")
 
         self.label_2 = QtWidgets.QLabel(self.centralwidget)
         self.label_2.setGeometry(QtCore.QRect(237, 250, 61, 16))
-        font = QtGui.QFont()
-        font.setFamily("Arial")
-        font.setPointSize(12)
         self.label_2.setFont(font)
         self.label_2.setObjectName("label_2")
 
@@ -198,11 +223,22 @@ class Ui_MainWindow(object):
         self.pushButton.setObjectName("pushButton")
         self.pushButton.clicked.connect(self.enter)
         self.pushButton.setStyleSheet("background-color: #fff;")
+        self.pushButton.setFont(font)
 
         self.pushButton_2 = QtWidgets.QPushButton(self.centralwidget)
         self.pushButton_2.setGeometry(QtCore.QRect(300, 360, 191, 31))
         self.pushButton_2.setObjectName("pushButton_2")
+        self.pushButton_2.clicked.connect(self.register)
         self.pushButton_2.setStyleSheet("background-color: #fff;")
+        self.pushButton_2.setFont(font)
+
+        # еррор генератор
+        self.label_3 = QtWidgets.QLabel(self.centralwidget)
+        self.label_3.setGeometry(QtCore.QRect(220, 450, 351, 41))
+        self.label_3.setAlignment(QtCore.Qt.AlignCenter)
+        self.label_3.setFont(font)
+        self.label_3.setStyleSheet("color: red;")
+        self.label_3.setObjectName("label_3")
 
         MainWindow.setCentralWidget(self.centralwidget)
 
@@ -218,40 +254,73 @@ class Ui_MainWindow(object):
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def enter(self):
+        global registred
         login = self.lineEdit.text()
         password = self.lineEdit_2.text()
-        cursor.execute(
-            f"SELECT * FROM users WHERE nickname = '{login}' AND password = {password}")
-        record = cursor.fetchall()
-        if record != []:
-            print("Вход выполнен успешно!\n")
-            registred = True
+        query_vaild = sql.SQL("SELECT * FROM users WHERE nickname = %s AND password = %s")
+        if login == "" or password == "":
+            self.label_3.setText("Введите логин и пароль!")
+            registred = False
+        else:
+            try:
+                cursor.execute(query_vaild, (login, password))
+                record = cursor.fetchall()
+                if record != []:
+                    print("Вход выполнен успешно!\n")
+                    self.label_3.setText("")
+                    self.label_3.setStyleSheet("display:none;")
+                    registred = True
+                    # удаление старого лейаута
+                    removeAll(self)
+                else:
+                    self.label_3.setText("Неправильный логин или пароль!")
+                    registred = False
+            except psycopg2.Error:
+                self.label_3.setText("Для пароля можно использовать только цифры!")
 
     def register(self):
-        login = self.lineEdit.text()
-        password = self.lineEdit_2.text()
-        cursor.execute(f"SELECT * FROM users WHERE nickname = '{login}'")
-        record = cursor.fetchall()
-        if record == []:
-            cursor.execute(
-                f"INSERT INTO users (nickname,password) VALUES ('{login}', {password})")
+        global registred
+        login = self.lineEdit.text().strip()
+        password = self.lineEdit_2.text().strip()
+        find_query_login = sql.SQL("SELECT * FROM users WHERE nickname = %s")
+        query_insert = sql.SQL(
+            "INSERT INTO users (nickname, password) VALUES (%s, %s)")
+        # базовый чек
+        if not login or not password:
+            self.label_3.setText("Логин и пароль не могут быть пустыми!")
+
+        cursor.execute(find_query_login, (login,))
+        if cursor.fetchone():
+            self.label_3.setText(
+                "Ошибка: Пользователь с таким логином уже существует!")
+
+        # Если без ошибок
+        try:
+            cursor.execute(query_insert, (login, password))
             conn.commit()
-            res = cursor.execute(
-                f"SELECT * FROM users WHERE nickname = '{login}'")
-            record = cursor.fetchall()
-            if record != []:
-                print("Вы зарегистрированы!\n")
-                registred = True
+            print("Вы успешно зарегистрированы!")
+            self.label_3.setText("")
+            self.label_3.setStyleSheet("display:none;")
+            registred = True
+            # удаление старого лейаута
+            removeAll(self)
+        except psycopg2.Error as exception:
+            conn.rollback()
+            print(f"Ошибка при регистрации: {exception}")
+            self.label_3.setText("Ошибка при регистрации")
+            registred = False
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "Speech Recognition App"))
+        MainWindow.setWindowTitle(_translate(
+            "MainWindow", "Speech Recognition App"))
         self.label.setText(_translate("MainWindow", "Логин:"))
         self.label_2.setText(_translate("MainWindow", "Пароль:"))
         self.pushButton.setText(_translate("MainWindow", "Войти"))
         self.pushButton_2.setText(_translate(
             "MainWindow", "Зарегистрироваться"))
-        
+
+
 def main(correct_answers):
     app = QApplication(sys.argv)
     window = QtWidgets.QMainWindow()
@@ -259,6 +328,7 @@ def main(correct_answers):
     ui.setupUi(window)
     window.show()
     sys.exit(app.exec_())
+
 
 if __name__ == "__main__":
     main(0)
